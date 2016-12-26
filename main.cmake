@@ -1,3 +1,6 @@
+cmake_minimum_required(VERSION 3.4)
+include(CMakeParseArguments)
+
 # Prepares build environment for using the specified component
 #
 # Arguments:

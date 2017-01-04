@@ -77,6 +77,8 @@ function(make_component_tests)
     test_runner.cpp
     ${ARGV}
   )
+  set(outdir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR})
+  set_output_directory(${project_name}Tests BINARY_DIR ${outdir} LIBRARY_DIR ${outdir})
   add_dependencies(${project_name}Tests ${project_name})
   set_target_properties(${project_name}Tests PROPERTIES FOLDER "${${project_name}_test_folder}")
   if(NOT Boost_INCLUDE_DIR)

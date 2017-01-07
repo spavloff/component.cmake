@@ -1,23 +1,32 @@
 cmake_minimum_required(VERSION 3.4)
 include(CMakeParseArguments)
 
-# Prepares build environment for using the specified component
+# Prepares build environment for using the specified component.
 #
 # Arguments:
 #    component_name - a component name like "number-recognizer"
 #
 # Reads variables:
-#    EXTERNAL_LIBRARY_FOLDER - contains name of a folder in IDE, which
-#                              will contain folder with component sources.
-#                              If it is absent, default name is used.
+#    COMPONENT_LIBRARY_FOLDER - contains name of a folder in IDE, which
+#                               will contain component libraries projects.
+#    COMPONENT_TEST_FOLDER    - contains name of a folder in IDE, which
+#                               will contain component unit test projects.
+#    COMPONENT_LIBRARY_DIR    - Directory containing component directory.
+#
+#    If any of these variables is not test, it will be initialized.
 #
 # Result: 
 #   Sets variables (for a component "number-recognizer"):
 #     NumberRecognizer_library_folder - IDE folder for the component sources.
 #     NumberRecognizer_test_folder    - IDE folder for the component unit tests.
 #     NumberRecognizer_root           - directory containing the component.
-#     NumberRecognizer_include        - directory containing the component includes.
-#     COMPONENT_NAME to number-recognizer
+#     NumberRecognizer_include        - list containing include directories of the component.
+#     CURRENT_COMPONENT_NAME          - to the component name (number-recognizer)
+#
+#   Sets global variables, if they are not defined yet:
+#     COMPONENT_LIBRARY_FOLDER
+#     COMPONENT_TEST_FOLDER
+#     COMPONENT_LIBRARY_DIR
 #
 # A component may be used either as a standalone project or as a part
 # of other project.
@@ -33,74 +42,50 @@ macro(make_component_project component_name)
   else()
     # Part of another project
     message(STATUS "${project_name} is built as a subproject")
-    if (NOT DEFINED EXTERNAL_LIBRARY_FOLDER)
-      set(${project_name}_library_folder "External libraries")
-    else()
-      set(${project_name}_library_folder "${EXTERNAL_LIBRARY_FOLDER}")
+
+    if (NOT DEFINED COMPONENT_LIBRARY_FOLDER)
+      set(COMPONENT_LIBRARY_FOLDER "Component libraries"
+          CACHE STRING "Folder for component libraries")
     endif()
-    if (NOT DEFINED EXTERNAL_LIBRARY_TEST_FOLDER)
-      set(${project_name}_test_folder "External tests")
+    set(${project_name}_library_folder "${COMPONENT_LIBRARY_FOLDER}")
+
+    if (NOT DEFINED COMPONENT_TEST_FOLDER)
+      set(COMPONENT_TEST_FOLDER "Component unit tests"
+          CACHE STRING "Folder for component unit tests")
+    endif()
+    set(${project_name}_test_folder "${COMPONENT_TEST_FOLDER}")
+
+    get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+    if (NOT DEFINED COMPONENT_LIBRARY_DIR)
+      set(COMPONENT_LIBRARY_DIR "${parent_dir}"
+          CACHE PATH "Directory where component libraries reside")
     else()
-      set(${project_name}_test_folder "${EXTERNAL_LIBRARY_TEST_FOLDER}")
+      if (${COMPONENT_LIBRARY_DIR} STREQUAL ${parent_dir})
+      else()
+        message(SEND_ERROR "Unexpected component location: ${parent_dir}, but components must be placed in ${COMPONENT_LIBRARY_DIR}")
+      endif()
     endif()
   endif()
 
   set(${project_name}_root ${CMAKE_CURRENT_SOURCE_DIR})
-  set(${project_name}_include ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  set(${project_name}_include ${CMAKE_CURRENT_SOURCE_DIR}/include/${component_name})
+
   include_directories(${${project_name}_include})
   if(NOT WIN32)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11" )
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
   else()
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
   endif()
-  set(COMPONENT_NAME "${component_name}")
+
+  set(CURRENT_COMPONENT_NAME "${component_name}")
 endmacro(make_component_project)
 
 
-# Creates target representing component unit tests
+# Creates target representing component library.
 #
 # Arguments:
-#    list of unit tests source files
-#
-# Reads variables:
-#    COMPONENT_NAME               - contains name of current component
-#    NumberRecognizer_test_folder - IDE folder for unit tests
-#
-# Result: 
-#    Creates executable for the unit tests, like "NumberRecognizerTests"
-#    Creates target "check-number-recognizer" that runs the test
-#
-function(make_component_tests)
-  capitalize_string(${COMPONENT_NAME} project_name)
-  add_executable(${project_name}Tests
-    test_runner.cpp
-    ${ARGV}
-  )
-  set(outdir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR})
-  set_output_directory(${project_name}Tests BINARY_DIR ${outdir} LIBRARY_DIR ${outdir})
-  add_dependencies(${project_name}Tests ${project_name})
-  set_target_properties(${project_name}Tests PROPERTIES FOLDER "${${project_name}_test_folder}")
-  if(NOT Boost_INCLUDE_DIR)
-    message(SEND_ERROR "Boost library was not located")
-  endif()
-  include_directories(${Boost_INCLUDE_DIR})
-  target_link_libraries (${project_name}Tests ${project_name})
-  target_link_libraries (${project_name}Tests ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
-
-  set(${project_name}_test_location $<TARGET_FILE:${project_name}Tests>)
-  add_custom_target(check-${COMPONENT_NAME}
-    COMMAND ${${project_name}_test_location}
-    DEPENDS ${project_name}Tests
-  )
-  set_target_properties(check-${COMPONENT_NAME} PROPERTIES FOLDER "${${project_name}_test_folder}")
-endfunction(make_component_tests)
-
-
-# Creates target representing component library
-#
-# Arguments:
-#    TARGET  - this library may link with generated executable
+#    TARGET  - this library may link with generated executable.
 #    HEADERS - following are additional include files (files in ./include
 #              does not need to be mentioned here).
 #    list of component source files
@@ -112,21 +97,35 @@ endfunction(make_component_tests)
 # Result: 
 #    Creates library "NumberRecognizer"
 #
-function(make_component_library)
-  capitalize_string(${COMPONENT_NAME} project_name)
+function(make_component_library name)
+  if (NOT CURRENT_COMPONENT_NAME)
+    message(SEND_ERROR "Undefined component ${name}")
+  endif()
+
+  if (${name} STREQUAL ${CURRENT_COMPONENT_NAME})
+  else()
+    message(SEND_ERROR "Unexpected component name: ${name}, expected: ${CURRENT_COMPONENT_NAME}")
+  endif()
+
+  capitalize_string(${name} project_name)
   set(srcs)
 
-  cmake_parse_arguments(ARG
+  set(extra_arguments ${ARGV})
+  list(REMOVE_AT extra_arguments 0)
+
+  cmake_parse_arguments(
+    ARG
     "TARGET"
     ""
     "HEADERS"
-    ${ARGN}
+    ${extra_arguments}
   )
 
   # Add header defined by this library
   if(MSVC_IDE OR XCODE)
     file(
       GLOB_RECURSE headers
+      # TODO: ${project_name}_include may be a list
       ${${project_name}_include}/*.h
       ${${project_name}_include}/*.def
     )
@@ -155,6 +154,112 @@ function(make_component_library)
     )
   endif()
 endfunction(make_component_library)
+
+
+# Creates target representing component unit tests.
+#
+# Arguments:
+#    list of unit tests source files
+#
+# Reads variables:
+#    CURRENT_COMPONENT_NAME    - contains name of current component
+#    ${compoment}_test_folder  - IDE folder for unit tests
+#
+# Result:
+#    Creates executable for the unit tests, like "NumberRecognizerTests"
+#    Creates target "check-number-recognizer" that runs the test
+#
+function(make_component_tests name)
+  if (NOT CURRENT_COMPONENT_NAME)
+    message(SEND_ERROR "Undefined component")
+  endif()
+
+  if (${name} STREQUAL ${CURRENT_COMPONENT_NAME})
+  else()
+    message(SEND_ERROR "Unexpected component name: ${name}, expected: ${CURRENT_COMPONENT_NAME}")
+  endif()
+
+  set(extra_arguments ${ARGV})
+  list(REMOVE_AT extra_arguments 0)
+
+  capitalize_string(${CURRENT_COMPONENT_NAME} project_name)
+  add_executable(${project_name}Tests
+    test_runner.cpp
+    ${extra_arguments}
+  )
+  set(outdir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR})
+  set_output_directory(${project_name}Tests BINARY_DIR ${outdir} LIBRARY_DIR ${outdir})
+  add_dependencies(${project_name}Tests ${project_name})
+  set_target_properties(${project_name}Tests PROPERTIES FOLDER "${${project_name}_test_folder}")
+  if(NOT Boost_INCLUDE_DIR)
+    message(SEND_ERROR "Boost library was not located")
+  endif()
+  include_directories(${Boost_INCLUDE_DIR})
+  target_link_libraries (${project_name}Tests ${project_name})
+  target_link_libraries (${project_name}Tests ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+
+  set(${project_name}_test_location $<TARGET_FILE:${project_name}Tests>)
+  add_custom_target(check-${CURRENT_COMPONENT_NAME}
+    COMMAND ${${project_name}_test_location}
+    DEPENDS ${project_name}Tests
+  )
+  set_target_properties(check-${CURRENT_COMPONENT_NAME} PROPERTIES FOLDER "${${project_name}_test_folder}")
+endfunction(make_component_tests)
+
+
+macro(make_test_application name)
+  set(options SHARED)
+  set(oneValueArgs "")
+  set(multiValueArgs CLANG CFLAGS SOURCES HEADERS)
+  set(extra_arguments ${ARGV})
+  list(REMOVE_AT extra_arguments 0)
+  cmake_parse_arguments(
+    ARG
+    "${options}" "${oneValueArgs}" "${multiValueArgs}"
+    ${extra_arguments}
+  )
+  set(object_list "")
+  if (MSVC)
+    set(CLANG_FLAGS --driver-mode=cl /EHsc /MTd)
+  else()
+    set(CLANG_FLAGS "-std=c++14") #TODO: remove particular standard
+  endif()
+
+  foreach(file ${ARG_CLANG})
+    set(obj_file ${CMAKE_CURRENT_BINARY_DIR}/${file}.obj)
+    set(src_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+    add_custom_command(
+      OUTPUT ${obj_file}
+      COMMAND clang ${CLANG_FLAGS} -c ${ARG_CFLAGS} -o ${obj_file} ${src_file}
+      MAIN_DEPENDENCY ${src_file}
+      DEPENDS ${src_file} clang Blick
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      COMMENT "Compiling ${src_file}"
+    )
+    set_source_files_properties(
+      ${obj_file}
+      PROPERTIES
+        GENERATED TRUE
+        EXTERNAL_OBJECT TRUE
+    )
+    list(APPEND object_list "${obj_file}")
+  endforeach()
+
+  set_source_files_properties(${ARG_HEADERS} PROPERTIES HEADER_FILE_ONLY ON)
+  set_source_files_properties(${ARG_CLANG} PROPERTIES HEADER_FILE_ONLY ON)
+  add_executable(${name}
+    ${ARG_CLANG}
+    ${ARG_SOURCES}
+    ${ARG_HEADERS}
+    ${ARG_UNPARSED_ARGUMENTS}
+    ${object_list}
+  )
+  set(outdir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR})
+  set_output_directory(${name} BINARY_DIR ${outdir} LIBRARY_DIR ${outdir})
+  add_dependencies(${name} Blick clang)
+  target_link_libraries (${name} Blick)
+  set_target_properties(${name} PROPERTIES FOLDER "Component test applications")
+endmacro(make_test_application)
 
 
 # Transforms component name from snake-case to CamelCase

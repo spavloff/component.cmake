@@ -11,9 +11,9 @@ include(CMakeParseArguments)
 #                               will contain component libraries projects.
 #    COMPONENT_TEST_FOLDER    - contains name of a folder in IDE, which
 #                               will contain component unit test projects.
-#    COMPONENT_LIBRARY_DIR    - Directory containing component directory.
+#    COMPONENT_LIBRARY_DIR    - the directory where components reside.
 #
-#    If any of these variables is not test, it will be initialized.
+# If any of these variables is not test, it will be initialized.
 #
 # Result: 
 #   Sets variables (for a component "number-recognizer"):
@@ -58,7 +58,7 @@ macro(make_component_project component_name)
     get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
     if (NOT DEFINED COMPONENT_LIBRARY_DIR)
       set(COMPONENT_LIBRARY_DIR "${parent_dir}"
-          CACHE PATH "Directory where component libraries reside")
+          CACHE PATH "Directory where components reside")
     else()
       if (${COMPONENT_LIBRARY_DIR} STREQUAL ${parent_dir})
       else()
@@ -68,7 +68,7 @@ macro(make_component_project component_name)
   endif()
 
   set(${project_name}_root ${CMAKE_CURRENT_SOURCE_DIR})
-  set(${project_name}_include ${CMAKE_CURRENT_SOURCE_DIR}/include/${component_name})
+  set(${project_name}_include ${${project_name}_root}/include)
 
   include_directories(${${project_name}_include})
   if(NOT WIN32)

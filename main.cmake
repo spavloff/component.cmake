@@ -32,6 +32,21 @@ include(CMakeParseArguments)
 # of other project.
 #
 macro(make_component_project component_name)
+  cmake_parse_arguments(MAKE_COMPONENT_PROJECT "" "" "DEPENDS" ${ARGN} )
+
+  get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
+  if (COMPONENT_LIBRARY_DIR)
+    if ("${COMPONENT_LIBRARY_DIR}" STREQUAL "${parent_dir}")
+    else()
+      message(SEND_ERROR "Unexpected component location: ${parent_dir}, but components must be placed in ${COMPONENT_LIBRARY_DIR}")
+    endif()
+  else()
+    set(COMPONENT_LIBRARY_DIR "${parent_dir}"
+        CACHE PATH "Directory where components reside")
+    message(STATUS "Components reside in directory: ${COMPONENT_LIBRARY_DIR}")
+  endif()
+
   capitalize_string(${component_name} project_name)
   if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
     # Standalone project
@@ -54,23 +69,16 @@ macro(make_component_project component_name)
           CACHE STRING "Folder for component unit tests")
     endif()
     set(${project_name}_test_folder "${COMPONENT_TEST_FOLDER}")
-
-    get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
-    if (NOT DEFINED COMPONENT_LIBRARY_DIR)
-      set(COMPONENT_LIBRARY_DIR "${parent_dir}"
-          CACHE PATH "Directory where components reside")
-    else()
-      if (${COMPONENT_LIBRARY_DIR} STREQUAL ${parent_dir})
-      else()
-        message(SEND_ERROR "Unexpected component location: ${parent_dir}, but components must be placed in ${COMPONENT_LIBRARY_DIR}")
-      endif()
-    endif()
   endif()
 
   set(${project_name}_root ${CMAKE_CURRENT_SOURCE_DIR})
   set(${project_name}_include ${${project_name}_root}/include)
 
-  include_directories(${${project_name}_include})
+  include_directories(${COMPONENT_LIBRARY_DIR} ${${project_name}_include})
+  foreach (dependency ${MAKE_COMPONENT_PROJECT_DEPENDS})
+    include_directories(${COMPONENT_LIBRARY_DIR}/${dependency}/include)
+  endforeach()
+
   if(NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
   else()
